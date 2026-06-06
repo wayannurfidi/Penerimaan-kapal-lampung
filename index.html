@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard Penerimaan Kapal — Lampung</title>
+<!-- SheetJS untuk export Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- jsPDF + autoTable untuk export PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root {
     --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
@@ -84,6 +89,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
 .fbtn.on{background:var(--teal-dim);border-color:var(--teal-border);color:var(--teal)}
 .export-btn{display:flex;align-items:center;gap:5px;font-size:0.75rem;padding:7px 13px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--muted);cursor:pointer;font-family:var(--font-sans);transition:all 0.15s;white-space:nowrap}
 .export-btn:hover{border-color:var(--teal-border);color:var(--teal);background:var(--teal-dim)}
+.export-wrap{position:relative}
+.export-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--bg2);border:1px solid var(--border2);border-radius:10px;overflow:hidden;z-index:100;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.35)}
+.export-menu.open{display:block}
+.export-item{display:flex;align-items:center;gap:8px;width:100%;padding:9px 14px;font-size:0.78rem;font-family:var(--font-sans);background:none;border:none;color:var(--text);cursor:pointer;text-align:left;transition:background 0.15s}
+.export-item:hover{background:var(--teal-dim);color:var(--teal)}
 
 /* TABLE HEADER */
 .table-header{display:grid;grid-template-columns:2fr 1.3fr 0.9fr 0.9fr 0.9fr 1fr 90px 32px;gap:10px;padding:7px 14px;font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;font-family:var(--font-mono);margin-bottom:6px}
@@ -203,10 +213,23 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
       <button class="fbtn" onclick="setFilter('done',this)">Selesai</button>
       <button class="fbtn" onclick="setFilter('pending',this)">Belum Tuntas</button>
     </div>
-    <button class="export-btn" onclick="exportCSV()">
-      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export CSV
-    </button>
+    <div class="export-wrap" id="exportWrap">
+      <button class="export-btn" onclick="toggleExportMenu(event)">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Unduh
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="export-menu" id="exportMenu">
+        <button class="export-item" onclick="exportExcel()">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m8 8 8 8M16 8l-8 8"/></svg>
+          Excel (.xlsx)
+        </button>
+        <button class="export-item" onclick="exportPDF()">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          PDF
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="table-header">
@@ -354,16 +377,26 @@ function mapShipObject(obj, _keys){
     }];
   }
 
+  const tujuanVal = get('tujuan','gudangtujuan','gudang_tujuan','planttujuan','plant_tujuan','destination','ke');
+  const apiId = get('id');
+  const uniqueId = apiId
+    ? String(apiId)
+    : (name + '_' + tujuanVal).replace(/[^a-z0-9]/gi,'_').replace(/_+/g,'_').toLowerCase();
+
   return {
-    id: name.replace(/\s+/g,'_').toLowerCase(),
+    id: uniqueId,
     name,
     asal:       get('asal','plantasal','plant_asal','dari','origin','asalkapal'),
-    tujuan:     get('tujuan','gudangtujuan','gudang_tujuan','planttujuan','plant_tujuan','destination','ke'),
+    tujuan:     tujuanVal,
     ekspeditur: get('ekspeditur','shipper','pengirim','ekspedisi'),
     eta:        get('eta','etaarrival','deliverydate','delivery_date','tanggaltiba','tgl_tiba','tgleta'),
+    tglGR:      get('tglgr','tgl_gr','tglegr','tanggalgr','tanggal_gr','grdate','gr_date'),
+    tglGI:      get('tglgi','tgl_gi','tglegi','tanggalgi','tanggal_gi','gidate','gi_date'),
+    tglPO:      get('tglpo','tgl_po','tglposto','tgl_po_sto','tanggalpo','tanggal_po'),
     keterangan: get('keterangan','catatan','note','notes','remark'),
     muatan:     get('jenismuatan','jenis_muatan','muatan','tipmuatan','type'),
     voyage:     parseInt(get('voyage','voyageke','jumlahvoyage'))||1,
+    nopo:       get('nopo','no_po','noposto','no_po_sto'),
     status, sandar, qty, gr,
     sisa: Math.max(0, sisa),
     products,
@@ -387,16 +420,13 @@ async function loadData(){
 
     const normalized = normalizeData(raw);
 
-    if(normalized === null){
-      // Format tidak dikenali — tampilkan raw info dan fallback ke data dummy
-      console.warn('Format API tidak dikenali:', raw);
+    if(normalized === null || normalized.length === 0){
+      console.warn('Format API tidak dikenali atau data kosong:', raw);
       dot.className = 'status-dot dot-err';
-      txt.textContent = 'Format data tidak dikenali — menampilkan data contoh';
-      DATA = getFallbackData();
-    } else if(normalized.length === 0){
-      dot.className = 'status-dot dot-err';
-      txt.textContent = 'Data kosong dari API';
-      DATA = getFallbackData();
+      txt.textContent = normalized === null
+        ? 'Format data tidak dikenali — periksa struktur JSON dari Apps Script'
+        : 'Data kosong dari Google Sheets';
+      DATA = [];
     } else {
       DATA = normalized;
       dot.className = 'status-dot dot-ok';
@@ -407,27 +437,13 @@ async function loadData(){
   } catch(e){
     console.error('Fetch error:', e);
     dot.className = 'status-dot dot-err';
-    txt.textContent = `Gagal memuat API — menampilkan data terakhir (${e.message})`;
-    if(DATA.length === 0) DATA = getFallbackData();
+    txt.textContent = `Gagal memuat data: ${e.message}`;
+    DATA = [];
   }
 
   btn.classList.remove('spinning');
   updateStats();
   applyFilters();
-}
-
-/* ── FALLBACK DATA (dari Excel yang sudah dianalisis) ── */
-function getFallbackData(){
-  return [
-    {id:'balistrait',name:'KM Bali Strait',asal:'Pel. Gresik-TUKS PG',tujuan:'Pel. Panjang Lampung',ekspeditur:'Pupuk Indonesia Logistik',eta:'06 Jun 2026',status:'wait',sandar:false,muatan:'Curah',qty:16004.459,gr:0,sisa:16004.459,voyage:1,keterangan:'Antri sandar — estimasi tiba 4/5 Juni 2026',products:[{nama:'NPK 15-10-12 CHM CRH',do:16004.459,gr:0,muatan:'Curah'}]},
-    {id:'dhana',name:'Dhana Bahari 2',asal:'GD Lini 1 Bontang',tujuan:'GD PKT Padimas 1',ekspeditur:'Intran Borneo Wisesa',eta:'27 Mei 2026',status:'partial',sandar:true,muatan:'Inbag',qty:1482,gr:974.8,sisa:507.2,voyage:1,keterangan:'Sebagian diterima — proses bongkar berlanjut',products:[{nama:'Urea PRL NS @50 KG',do:1482,gr:974.8,muatan:'Inbag'}]},
-    {id:'tatsuei',name:'KM Tatsuei',asal:'GD Lini 1 Bontang',tujuan:'GD PKT Padimas 1 & 2',ekspeditur:'Intran Borneo Wisesa',eta:'27 Mei 2026',status:'done',sandar:true,muatan:'Inbag',qty:2700,gr:2700,sisa:0,voyage:1,keterangan:'Proses bongkar sejak 02 Juni 2026 — selesai diterima',products:[{nama:'Urea PRL NS @50 KG',do:400,gr:400,muatan:'Inbag'},{nama:'NPK 14-12-16-4 Kakao SUB @50KG',do:2300,gr:2300,muatan:'Inbag'}]},
-    {id:'clarity',name:'KM Clarity 08',asal:'Pel. Gresik-TUKS PG',tujuan:'PKG DC Lampung I',ekspeditur:'Samudra Lingkar Nusantara',eta:'24 Mei 2026',status:'done',sandar:true,muatan:'Inbag',qty:5700,gr:5700,sisa:0,voyage:1,keterangan:'Selesai bongkar di PKG DC Lampung I',products:[{nama:'NPK 15-10-12 SUB @50KG',do:4800,gr:4800,muatan:'Inbag'},{nama:'Pupuk Organik Granul 40KG',do:900,gr:900,muatan:'Inbag'}]},
-    {id:'yk01',name:'KM YK 01',asal:'GD Lini 1 Bontang',tujuan:'GD PKT Padimas 2',ekspeditur:'Intran Borneo Wisesa',eta:'12 Apr 2026',status:'done',sandar:true,muatan:'Inbag',qty:2239,gr:2239,sisa:0,voyage:1,keterangan:'Selesai bongkar — fully received',products:[{nama:'Urea GRN NS @50 KG',do:2239,gr:2239,muatan:'Inbag'}]},
-    {id:'shoryuu',name:'KM Shoryuu 88',asal:'Pel. Gresik-TUKS PG',tujuan:'Pel. Panjang Lampung',ekspeditur:'Kopindo Cipta Sejahtera',eta:'30 Apr 2026',status:'done',sandar:true,muatan:'Curah',qty:6000.346,gr:6000.346,sisa:0,voyage:1,keterangan:'Selesai bongkar — fully received',products:[{nama:'NPK 15-10-12 CHM CRH',do:6000.346,gr:6000.346,muatan:'Curah'}]},
-    {id:'rotestrait',name:'KM Rote Strait',asal:'Pel. Gresik-TUKS PG',tujuan:'Pel. Panjang Lampung',ekspeditur:'Pupuk Indonesia Logistik',eta:'30 Apr 2026',status:'done',sandar:true,muatan:'Curah',qty:8495.588,gr:8495.588,sisa:0,voyage:2,keterangan:'Selesai 2 voyage — fully received',products:[{nama:'NPK 15-10-12 CHM CRH (voyage 1)',do:4243.916,gr:4243.916,muatan:'Curah'},{nama:'NPK 15-10-12 CHM CRH (voyage 2)',do:4251.672,gr:4251.672,muatan:'Curah'}]},
-    {id:'bungateratai',name:'KM Bunga Teratai 168',asal:'Pel. Gresik-TUKS PG',tujuan:'Pel. Panjang Lampung',ekspeditur:'Kopindo Cipta Sejahtera',eta:'27 Apr 2026',status:'done',sandar:true,muatan:'Curah',qty:21008.326,gr:21008.326,sisa:0,voyage:3,keterangan:'Selesai 3 voyage — layar kembali',products:[{nama:'NPK 15-10-12 CHM CRH (voyage 1)',do:7007.384,gr:7007.384,muatan:'Curah'},{nama:'NPK 15-10-12 CHM CRH (voyage 2)',do:7000.314,gr:7000.314,muatan:'Curah'},{nama:'NPK 15-10-12 CHM CRH (voyage 3)',do:7000.628,gr:7000.628,muatan:'Curah'}]}
-  ];
 }
 
 /* ── STATS ── */
@@ -460,17 +476,24 @@ function buildCard(s, idx){
 
   const prodList = (s.products && s.products.length > 0)
     ? s.products
-    : [{nama: s.muatan || 'Muatan', do: s.qty, gr: s.gr, muatan: s.muatan || ''}];
+    : [{nama: s.muatan || 'Muatan', do: s.qty, gr: s.gr, muatan: s.muatan || '', tglGR: s.tglGR||''}];
 
   const prods = prodList.map(pr=>{
     const prDo  = parseFloat(pr.do)  || 0;
     const prGr  = parseFloat(pr.gr)  || 0;
     const pp = pct(prGr, prDo);
     const prodSisa = Math.max(0, prDo - prGr);
+    // Deteksi jenis: CRH di nama produk = Curah, tidak ada nama = Inbag
+    const isCurah = (pr.nama||'').toUpperCase().includes('CRH');
+    const isInbag = !pr.nama || pr.nama==='Muatan';
+    const jenisLabel = pr.muatan==='Curah'||isCurah ? '<span style="background:rgba(59,130,246,0.15);color:var(--blue);border-radius:4px;padding:1px 6px;font-size:0.65rem;font-family:var(--font-mono)">CURAH</span>'
+                     : pr.muatan==='Inbag'||isInbag  ? '<span style="background:rgba(0,201,167,0.12);color:var(--teal);border-radius:4px;padding:1px 6px;font-size:0.65rem;font-family:var(--font-mono)">INBAG</span>'
+                     : pr.muatan ? `<span style="background:var(--bg3);color:var(--muted);border-radius:4px;padding:1px 6px;font-size:0.65rem;font-family:var(--font-mono)">${pr.muatan}</span>` : '';
+    const tglGRLine = pr.tglGR ? `<div style="font-size:0.67rem;color:var(--muted);margin-top:2px;font-family:var(--font-mono)">Tgl. GR: ${pr.tglGR}</div>` : '';
     return `<div class="prod-item">
       <div>
-        <div class="prod-name">${pr.nama||'Muatan'}</div>
-        <div class="prod-type">${pr.muatan||''}</div>
+        <div class="prod-name">${pr.nama||'Muatan'} ${jenisLabel}</div>
+        ${tglGRLine}
       </div>
       <div class="prod-right">
         <div class="prod-do">${fmtN(prDo)} ton</div>
@@ -536,7 +559,11 @@ function buildCard(s, idx){
               <div class="info-row"><span class="info-key">Ekspeditur</span><span class="info-val">${s.ekspeditur||'—'}</span></div>
               <div class="info-row"><span class="info-key">Jenis muatan</span><span class="info-val">${s.muatan||'—'}</span></div>
               <div class="info-row"><span class="info-key">Jumlah voyage</span><span class="info-val">${s.voyage||1}×</span></div>
+              <div class="info-row"><span class="info-key">Tgl. PO STO</span><span class="info-val" style="font-family:var(--font-mono);font-size:0.75rem">${s.tglPO||'—'}</span></div>
               <div class="info-row"><span class="info-key">ETA / Delivery</span><span class="info-val">${s.eta||'—'}</span></div>
+              <div class="info-row"><span class="info-key">Tgl. GI (Plant Asal)</span><span class="info-val" style="color:var(--muted)">${s.tglGI||'—'}</span></div>
+              <div class="info-row"><span class="info-key">Tgl. Penerimaan (GR)</span><span class="info-val" style="color:var(--teal)">${s.tglGR||'—'}</span></div>
+              <div class="info-row"><span class="info-key">No. PO STO</span><span class="info-val" style="font-family:var(--font-mono);font-size:0.75rem">${s.nopo||'—'}</span></div>
               <div class="info-row"><span class="info-key">Qty PO (ton)</span><span class="info-val">${fmtN(s.qty)}</span></div>
               <div class="info-row"><span class="info-key">Qty GR (ton)</span><span class="info-val">${fmtN(s.gr)}</span></div>
               <div class="info-row"><span class="info-key">Sisa bongkar</span><span class="info-val" style="color:${sisa>0.01?'var(--amber)':'var(--green)'}">${fmtN(sisa)} ton</span></div>
@@ -592,22 +619,199 @@ function setFilter(f, btn){
 
 document.getElementById('searchInput').addEventListener('input', applyFilters);
 
-function exportCSV(){
-  const rows = [['Nama Kapal','Asal','Tujuan','Ekspeditur','ETA','Status','Jenis Muatan','Voyage','Qty PO (ton)','Qty GR (ton)','Sisa (ton)','Realisasi (%)','Keterangan']];
-  DATA.forEach(s=>{
-    const st = s.status==='done'?'Selesai':s.status==='partial'?'Sebagian':'Belum diterima';
+function toggleExportMenu(e){
+  e.stopPropagation();
+  document.getElementById('exportMenu').classList.toggle('open');
+}
+document.addEventListener('click', () => document.getElementById('exportMenu').classList.remove('open'));
+
+/* ── EXPORT EXCEL ── */
+function exportExcel(){
+  document.getElementById('exportMenu').classList.remove('open');
+  if(typeof XLSX === 'undefined'){ alert('Library Excel belum siap, coba lagi.'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── Sheet 1: Rekap per Kapal ──
+  const hdr = ['Nama Kapal','No. PO STO','Tgl. PO STO','Asal','Gudang Tujuan','Ekspeditur','ETA','Tgl. GI (Plant Asal)','Tgl. GR (Penerimaan)','Status','Jenis Muatan','Voyage','Qty PO (ton)','Qty GR (ton)','Sisa (ton)','Realisasi (%)','Keterangan'];
+  const rows = [hdr];
+  DATA.forEach(s => {
+    const st   = s.status==='done'?'Selesai':s.status==='partial'?'Sebagian':'Belum diterima';
     const sisa = Math.max(0,(s.qty||0)-(s.gr||0));
-    rows.push([s.name,s.asal||'',s.tujuan||'',s.ekspeditur||'',s.eta||'',st,s.muatan||'',s.voyage||1,(s.qty||0).toFixed(3),(s.gr||0).toFixed(3),sisa.toFixed(3),pct(s.gr,s.qty)+'%',s.keterangan||'']);
-    (s.products||[]).forEach(pr=>{
+    rows.push([
+      s.name, s.nopo||'', s.tglPO||'', s.asal||'', s.tujuan||'', s.ekspeditur||'',
+      s.eta||'', s.tglGI||'', s.tglGR||'', st, s.muatan||'', s.voyage||1,
+      parseFloat((s.qty||0).toFixed(3)), parseFloat((s.gr||0).toFixed(3)),
+      parseFloat(sisa.toFixed(3)), pct(s.gr,s.qty)+'%', s.keterangan||''
+    ]);
+    (s.products||[]).forEach(pr => {
       const ps = Math.max(0,(pr.do||0)-(pr.gr||0));
-      rows.push(['  └ '+pr.nama,'','','','','',pr.muatan||'','',  (pr.do||0).toFixed(3),(pr.gr||0).toFixed(3),ps.toFixed(3),pct(pr.gr,pr.do)+'%','']);
+      rows.push([
+        '  └ '+pr.nama, '', '', '', '', '', '', pr.tglGI||'', pr.tglGR||'', '',
+        pr.muatan||'', '',
+        parseFloat((pr.do||0).toFixed(3)), parseFloat((pr.gr||0).toFixed(3)),
+        parseFloat(ps.toFixed(3)), pct(pr.gr,pr.do)+'%', ''
+      ]);
     });
   });
-  const csv = rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='rekap_kapal_lampung.csv'; a.click();
-  URL.revokeObjectURL(url);
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  ws1['!cols'] = [22,14,13,26,26,22,13,14,14,13,11,8,13,13,12,12,28].map(w=>({wch:w}));
+  ws1['!freeze'] = { xSplit:0, ySplit:1 };
+  XLSX.utils.book_append_sheet(wb, ws1, 'Rekap Kapal');
+
+  // ── Sheet 2: Detail Produk flat ──
+  const hdr2 = ['Nama Kapal','No. PO STO','Tgl. PO STO','Gudang Tujuan','Produk','Jenis Muatan','Qty DO (ton)','Qty GR (ton)','Sisa (ton)','Realisasi (%)','Tgl. GI (Plant Asal)','Tgl. GR (Penerimaan)'];
+  const rows2 = [hdr2];
+  DATA.forEach(s => {
+    (s.products||[]).forEach(pr => {
+      const ps = Math.max(0,(pr.do||0)-(pr.gr||0));
+      rows2.push([
+        s.name, s.nopo||'', s.tglPO||'', s.tujuan||'', pr.nama||'', pr.muatan||'',
+        parseFloat((pr.do||0).toFixed(3)), parseFloat((pr.gr||0).toFixed(3)),
+        parseFloat(ps.toFixed(3)), pct(pr.gr,pr.do)+'%', pr.tglGI||'', pr.tglGR||''
+      ]);
+    });
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(rows2);
+  ws2['!cols'] = [22,14,13,26,34,11,13,13,12,12,14,14].map(w=>({wch:w}));
+  ws2['!freeze'] = { xSplit:0, ySplit:1 };
+  XLSX.utils.book_append_sheet(wb, ws2, 'Detail Produk');
+
+  const ts = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
+  XLSX.writeFile(wb, `Rekap_Kapal_Lampung_${ts}.xlsx`);
+}
+
+/* ── EXPORT PDF — TEMA TERANG ── */
+function exportPDF(){
+  document.getElementById('exportMenu').classList.remove('open');
+  if(typeof window.jspdf === 'undefined'){ alert('Library PDF belum siap, coba lagi.'); return; }
+  const { jsPDF } = window.jspdf;
+
+  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+  const ts  = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+
+  // Header terang
+  doc.setFillColor(0, 122, 104); // teal gelap
+  doc.rect(0, 0, 297, 26, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica','bold');
+  doc.text('Dashboard Penerimaan Kapal — Lampung', 14, 11);
+  doc.setFontSize(8);
+  doc.setFont('helvetica','normal');
+  doc.text(`Dicetak: ${ts}   |   Total: ${DATA.length} kapal   |   Sumber: Google Sheets`, 14, 19);
+
+  // Ringkasan statistik
+  const totalQty = DATA.reduce((a,s)=>a+(s.qty||0),0);
+  const totalGR  = DATA.reduce((a,s)=>a+(s.gr||0),0);
+  const totalSisa= Math.max(0, totalQty-totalGR);
+  const pctTotal = totalQty>0?Math.round(totalGR/totalQty*100):0;
+  const cntDone  = DATA.filter(s=>s.status==='done').length;
+  const cntPart  = DATA.filter(s=>s.status==='partial').length;
+  const cntWait  = DATA.filter(s=>s.status==='wait').length;
+
+  doc.setFillColor(248,250,252);
+  doc.rect(0,26,297,18,'F');
+  doc.setDrawColor(220,220,220);
+  doc.line(0,44,297,44);
+  const stats = [
+    [`Total Qty PO`, `${totalQty.toLocaleString('id-ID',{maximumFractionDigits:0})} ton`],
+    [`Total GR`, `${totalGR.toLocaleString('id-ID',{maximumFractionDigits:0})} ton`],
+    [`Sisa Bongkar`, `${totalSisa.toLocaleString('id-ID',{maximumFractionDigits:0})} ton`],
+    [`Realisasi`, `${pctTotal}%`],
+    [`Selesai`, `${cntDone} kapal`],
+    [`Sebagian`, `${cntPart} kapal`],
+    [`Belum`, `${cntWait} kapal`],
+  ];
+  stats.forEach((st,i)=>{
+    const x = 14 + i*40;
+    doc.setFontSize(6.5); doc.setTextColor(100,116,139); doc.setFont('helvetica','normal');
+    doc.text(st[0], x, 33);
+    doc.setFontSize(9); doc.setTextColor(15,23,42); doc.setFont('helvetica','bold');
+    doc.text(st[1], x, 41);
+  });
+
+  // Tabel utama
+  const head = [['Kapal','No. PO STO','Tgl. PO','Asal','Tujuan','Ekspeditur','ETA','Tgl. GI','Tgl. GR','Qty PO','GR','Sisa','%','Status']];
+  const body = [];
+  DATA.forEach(s => {
+    const st   = s.status==='done'?'Selesai':s.status==='partial'?'Sebagian':'Belum';
+    const sisa = Math.max(0,(s.qty||0)-(s.gr||0));
+    const p    = pct(s.gr,s.qty);
+    body.push([
+      s.name, s.nopo||'—', s.tglPO||'—',
+      (s.asal||'').replace(/^(GD |PEL |PKG )/,''),
+      (s.tujuan||'').replace(/^(GD |PEL |PKG )/,''),
+      s.ekspeditur||'—',
+      s.eta||'—', s.tglGI||'—', s.tglGR||'—',
+      (s.qty||0).toLocaleString('id-ID',{maximumFractionDigits:0}),
+      (s.gr||0).toLocaleString('id-ID',{maximumFractionDigits:0}),
+      sisa.toLocaleString('id-ID',{maximumFractionDigits:0}),
+      p+'%', st
+    ]);
+    (s.products||[]).forEach(pr => {
+      const isCurah = (pr.nama||'').toUpperCase().includes('CRH');
+      body.push([
+        '   └ '+(pr.nama||'')+(isCurah?' [CRH]':' [Inbag]'),
+        '','','','','','', pr.tglGI||'', pr.tglGR||'',
+        (pr.do||0).toLocaleString('id-ID',{maximumFractionDigits:0}),
+        (pr.gr||0).toLocaleString('id-ID',{maximumFractionDigits:0}),
+        Math.max(0,(pr.do||0)-(pr.gr||0)).toLocaleString('id-ID',{maximumFractionDigits:0}),
+        pct(pr.gr,pr.do)+'%', ''
+      ]);
+    });
+  });
+
+  doc.autoTable({
+    startY: 47,
+    head, body,
+    theme: 'striped',
+    styles: {
+      fontSize: 7, font:'helvetica', cellPadding:2.2,
+      textColor:[15,23,42], fillColor:[255,255,255],
+      lineColor:[226,232,240], lineWidth:0.25
+    },
+    headStyles: { fillColor:[0,122,104], textColor:[255,255,255], fontStyle:'bold', fontSize:7.5 },
+    alternateRowStyles: { fillColor:[248,250,252] },
+    columnStyles: {
+      0:{cellWidth:30}, 1:{cellWidth:20,font:'courier',fontSize:6},
+      2:{cellWidth:13}, 3:{cellWidth:20}, 4:{cellWidth:22}, 5:{cellWidth:22},
+      6:{cellWidth:13}, 7:{cellWidth:13}, 8:{cellWidth:13},
+      9:{cellWidth:12,halign:'right'}, 10:{cellWidth:12,halign:'right'},
+      11:{cellWidth:12,halign:'right'}, 12:{cellWidth:9,halign:'center'},
+      13:{cellWidth:14,halign:'center'}
+    },
+    didParseCell(data){
+      if(data.row.raw && String(data.row.raw[0]).startsWith('   └')){
+        data.cell.styles.textColor=[100,116,139]; data.cell.styles.fontSize=6;
+      }
+      if(data.column.index===13 && data.section==='body'){
+        const v=String(data.cell.raw);
+        if(v==='Selesai')  { data.cell.styles.textColor=[21,128,61]; data.cell.styles.fontStyle='bold'; }
+        if(v==='Sebagian') { data.cell.styles.textColor=[161,98,7];  data.cell.styles.fontStyle='bold'; }
+        if(v==='Belum')    { data.cell.styles.textColor=[185,28,28]; data.cell.styles.fontStyle='bold'; }
+      }
+      if(data.column.index===12 && data.section==='body'){
+        const n=parseInt(data.cell.raw)||0;
+        if(n>=100) data.cell.styles.textColor=[21,128,61];
+        else if(n>=50) data.cell.styles.textColor=[161,98,7];
+        else if(n>0) data.cell.styles.textColor=[185,28,28];
+      }
+    },
+    margin:{ left:14, right:14 },
+  });
+
+  // Footer
+  const pageCount = doc.internal.getNumberOfPages();
+  for(let i=1;i<=pageCount;i++){
+    doc.setPage(i);
+    doc.setFontSize(7); doc.setTextColor(148,163,184); doc.setFont('helvetica','normal');
+    doc.text(`Halaman ${i} / ${pageCount}`, 283, 205, {align:'right'});
+    doc.text('Dashboard Penerimaan Kapal — Lampung', 14, 205);
+  }
+
+  const ts2 = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
+  doc.save(`Rekap_Kapal_Lampung_${ts2}.pdf`);
 }
 
 // Auto-load on start
